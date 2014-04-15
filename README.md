@@ -25,61 +25,38 @@ code in Lua, how to keep the maintainability without modularization or code
 reusing?
 
 ##Solve it
-Nesting.lua is a Node.js project aiming solving this problem. The mechanism is
-simple: making use of ``require`` function in Lua.
+Nesting.lua is a Node.js project aiming to solve this problem by *including*
+other Lua scripts.
 
-This function works like ``#include`` macro in C (I am not familiar with Lua so
-please point them out if I make any mistakes here). Here is an example:
+You could specify a list of files to be included and Nesting.lua will
+automatically copy them into the script file, like ``#include`` macro in C.
+Those files will be copied intactly and hence no code other than function
+definitions could exist. To bypass this issue, you could provide a ``return``
+expression for Redis:
 
 ```Lua
--- a.lua
-function double (n)
--- to make sure it works I use a wrong function name here.
-  return n + n + n
-end
+return do_something(KEYS, ARGV)
 ```
 
-```Lua
--- b.lua
-require('a')
-print(double(10))
-```
+Now you could wrap one self-defined command as a function and call it from other
+ scripts. However, sometimes we need some utility functions which won't be
+invoked by Redis. To achieve this, Nesting.lua will only pass one script to
+Redis if a ``return`` expression will be supplied.
 
-Execute ``b.lua`` and you should see the number *30*.
+How to pass those information to Nesting.lua? You could write a JSON at the
+first block comment in Lua:
 
-Nesting.lua will imitate the ``require`` function: copying all required files to
-this script (in memory of course). You could then call functions defined in
-those files. Now you can wrap your self-defined command as a function and call
-it from other scripts. You can also define some utility functions and make use
-of them everywhere.
-
-Here comes two problems:
-
-1. If I want to write a Lua file with only utility functions, what should I do?
-
-2. Redis will not execute a function. Instead, it will interpret the whole
-script. If I wrap my self-defined command in one function, how to make it
-compatible with Redis?
-
-To the first problem, we could tell Nesting.lua that the file shouldn't be sent
-to Redis. To the second problem, we could specify an ``return`` expression to
-be added at the end of the script when it is submitted to Redis.
-
-How to pass those information to Nesting.lua? When we pass a piece of code to
-Nesting.lua interface directly, an object could be supplied. When we want to
-load a directory of Lua files, we could write a JSON at the beginning of files:
-
-```Lua
 --[[
 {
-  "header": true,
-  "return": "return this_command(KEYS, ARGV)"
+  "include" : ["utility.lua", "new_item.lua", "log.lua"],
+  "return" : "return incr_visit(KEYS, ARGV)"
 }
 ]]--
-```
 
-You might don't like this style so you could also pass a function to parse the
-Lua files and return an object.
+We choose this way to simplify our work. If you don't like the style, you could
+customize your parser and return an object.
+
+When you load a string as script, you could aslo provide an object directly.
 
 ##Usage
 The project has a completely different solution at first (but much more ugly).
