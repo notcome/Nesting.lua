@@ -2,10 +2,10 @@
 
 ##The Problem
 Redis has introduced the Lua script function for a long time. Different from a
-traditional model, Lua scripts are executed as global codes (like being executed
-in CLI), which makes they access parameters through two global arrays. This
-resulted in the impossibility of invoking other scripts in one script.
-Considering the following code:
+traditional model, Lua scripts are executed as global code (like being executed
+in CLI), forced to access parameters through two global arrays. This design
+resulted in the impossibility of calling other scripts. Considering the
+following code:
 
 ```Lua
 if tonumber(ARGV[1]) <= 10 then
@@ -15,26 +15,26 @@ else
 end
 ```
 
-Our script accesses ``KEYS`` and ``ARGV`` arrays to get the parameters. If it
-calls other scripts, what will happen? One possible way is backuping the two
-arrays and set new ones, which is much more complicated than the current one:
-disabling ``EVAL`` and ``EVALSHA`` directly.
+``KEYS`` and ``ARGV`` are two global arrays. If our script call another script,
+the interpreter will have to backup them and set the proper new ones. It is much
+ more complicated than the current solution: disabling ``EVAL`` and ``EVALSHA``
+directly.
 
-However, such behavior make a new problem arise: if we want to write a fair
-amount of codes in Lua, how to keep the maintainability without modularization
-or code reusing?
+However, this choice leads a new problem: if we want to write a fair amount of
+code in Lua, how to keep the maintainability without modularization or code
+reusing?
 
 ##Solve it
 Nesting.lua is a Node.js project aiming solving this problem. The mechanism is
 simple: making use of ``require`` function in Lua.
 
 This function works like ``#include`` macro in C (I am not familiar with Lua so
-please point it out if I make any mistakes here). Here is an example:
+please point them out if I make any mistakes here). Here is an example:
 
 ```Lua
 -- a.lua
 function double (n)
--- to make sure it works I use a bad function name here.
+-- to make sure it works I use a wrong function name here.
   return n + n + n
 end
 ```
@@ -45,27 +45,29 @@ require('a')
 print(double(10))
 ```
 
-Execute ``b.lua`` and you should see a number of thirty.
+Execute ``b.lua`` and you should see the number *30*.
 
-Nesting.lua will expand all ``require`` function so that you could call
-functions defined in other scripts. You could wrap your self-defined command as
-a function and call it from other scripts. You could also define some utility
-functions and make use of them everywhere.
+Nesting.lua will imitate the ``require`` function: copying all required files to
+this script (in memory of course). You could then call functions defined in
+those files. Now you can wrap your self-defined command as a function and call
+it from other scripts. You can also define some utility functions and make use
+of them everywhere.
 
 Here comes two problems:
 
 1. If I want to write a Lua file with only utility functions, what should I do?
 
-2. Redis will not execute a function. It will interpret the script content. If I
- wrap all expressions in a function, how to make it compatible with Redis?
+2. Redis will not execute a function. Instead, it will interpret the whole
+script. If I wrap my self-defined command in one function, how to make it
+compatible with Redis?
 
-To the first problem, we could tell Nesting.lua that the file should be
-processed separately. To the second problem, we could specify an expression to
+To the first problem, we could tell Nesting.lua that the file shouldn't be sent
+to Redis. To the second problem, we could specify an ``return`` expression to
 be added at the end of the script when it is submitted to Redis.
 
-How to pass those information to Nesting.lua? We could pass a piece of code to
-Nesting.lua through a function with the above information. When we want to load
-a directory of Lua files, we could write a JSON at the beginning at each file:
+How to pass those information to Nesting.lua? When we pass a piece of code to
+Nesting.lua interface directly, an object could be supplied. When we want to
+load a directory of Lua files, we could write a JSON at the beginning of files:
 
 ```Lua
 --[[
@@ -77,7 +79,7 @@ a directory of Lua files, we could write a JSON at the beginning at each file:
 ```
 
 You might don't like this style so you could also pass a function to parse the
-Lua files and return an ``Object``.
+Lua files and return an object.
 
 ##Usage
 The project has a completely different solution at first (but much more ugly).
